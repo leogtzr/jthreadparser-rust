@@ -1,3 +1,32 @@
+const THREAD_INFORMATION_BEGINS: &'static str = r#"\""#;
+const THREAD_NAME_RGX: &'static str = r#"^\"(.*)\".*prio=([0-9]+) tid=(\w*) nid=(\w*)\s\w*"#;
+const STATE_RGX: &'static str = r#"\s+java.lang.Thread.State: (.*)"#;
+const LOCKED_RGX: &'static str = r#"\s*\- locked\s*<(.*)>\s*\(a\s(.*)\)"#;
+const PARKINGORWAITING_RGX: &'static str = r#"\s*\- (?:waiting on|parking to wait for)\s*<(.*)>\s*\(a\s(.*)\)"#;
+const STACKTRACE_RGX: &'static str = r#"^\s+(at|\-\s).*\)$"#;
+const STACKTRACE_RGX_METHOD_NAME: &'static str = r#"at\s+(.*)$"#;
+const THREADNAME_RGX_GROUP_INDEX: i32 = 1;
+const THREADPRIORITY_RGX_GROUP_INDEX: i32 = 2;
+const THREADID_RGX_GROUP_INDEX: i32 = 3;
+const THREADNATIVE_ID_RGX_GROUP_INDEX: i32 = 4;
+
+// ThreadInfo ...
+struct ThreadInfo {
+	name: String, 
+    id: String, 
+    native_id: String, 
+    priority: String, 
+    state: String, 
+    stack_trace: String,
+	daemon: bool,
+}
+
+// Locked ...
+struct Locked {
+	lock_id: String, 
+    locked_object_name: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
