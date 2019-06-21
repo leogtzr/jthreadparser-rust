@@ -10,7 +10,6 @@ const THREADPRIORITY_RGX_GROUP_INDEX: i32 = 2;
 const THREADID_RGX_GROUP_INDEX: i32 = 3;
 const THREADNATIVE_ID_RGX_GROUP_INDEX: i32 = 4;
 
-// ThreadInfo ...
 struct ThreadInfo {
 	name: String, 
     id: String, 
@@ -21,7 +20,16 @@ struct ThreadInfo {
 	daemon: bool,
 }
 
-// Locked ...
+impl ToString for ThreadInfo {
+    fn to_string(&self) -> String {
+        if self.daemon {
+		    format!("Thread Id: '{}' (daemon), Name: '{}', State: '{}'", self.id, self.name, self.state)
+	    } else {
+            format!("Thread Id: '{}', Name: '{}', State: '{}'", self.id, self.name, self.state)
+        }
+    }
+}
+
 struct Locked {
 	lock_id: String, 
     locked_object_name: String,
@@ -118,4 +126,25 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 
 	Locked ownable synchronizers:
 	- None"#;
+
+    #[test]
+    fn should_tag_correctly_daemon_thread() {
+        let expected_thread_string_info: String = String::from("Thread Id: '0x00007f90d0106000' (daemon), Name: 'Attach Listener', State: 'RUNNABLE'");
+
+        let mut th = ThreadInfo{
+            id: String::from("0x00007f90d0106000")
+            , name: String::from("Attach Listener")
+            , state: String::from("RUNNABLE")
+            , daemon: true
+            , native_id: String::from("")
+            , priority: String::from(""),
+            stack_trace: String::from(""),
+        };
+        assert_eq!(th.to_string(), expected_thread_string_info);
+
+        th.daemon = false;
+
+        let expected_thread_string_info = "Thread Id: '0x00007f90d0106000', Name: 'Attach Listener', State: 'RUNNABLE'";
+        assert_eq!(th.to_string(), expected_thread_string_info);
+    }
 }
