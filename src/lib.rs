@@ -1,5 +1,8 @@
+extern crate regex;
+use regex::Regex;
+
 const THREAD_INFORMATION_BEGINS: &'static str = r#"\""#;
-const THREAD_NAME_RGX: &'static str = r#"^\"(.*)\".*prio=([0-9]+) tid=(\w*) nid=(\w*)\s\w*"#;
+const THREAD_NAME_RGX: &'static str = r#"^"(.*)".*prio=([0-9]+) tid=(\w*) nid=(\w*)\s\w*"#;
 const STATE_RGX: &'static str = r#"\s+java.lang.Thread.State: (.*)"#;
 const LOCKED_RGX: &'static str = r#"\s*\- locked\s*<(.*)>\s*\(a\s(.*)\)"#;
 const PARKINGORWAITING_RGX: &'static str = r#"\s*\- (?:waiting on|parking to wait for)\s*<(.*)>\s*\(a\s(.*)\)"#;
@@ -10,6 +13,7 @@ const THREADPRIORITY_RGX_GROUP_INDEX: i32 = 2;
 const THREADID_RGX_GROUP_INDEX: i32 = 3;
 const THREADNATIVE_ID_RGX_GROUP_INDEX: i32 = 4;
 
+#[derive(Debug)]
 struct ThreadInfo {
 	name: String, 
     id: String, 
@@ -30,19 +34,83 @@ impl ToString for ThreadInfo {
     }
 }
 
+impl ThreadInfo {
+	fn empty() -> ThreadInfo {
+		ThreadInfo {
+			name: String::from(""),
+			id: String::from(""), 
+			native_id: String::from(""), 
+			priority: String::from(""), 
+			state: String::from(""), 
+			stack_trace: String::from(""),
+			daemon: false,
+		}
+	}
+}
+
 struct Locked {
 	lock_id: String, 
     locked_object_name: String,
+}
+
+fn extract_thread_state(line: String) -> String {
+	let rg = Regex::new(STATE_RGX).unwrap();
+	let state_tokens = line.split_whitespace().collect::<Vec<&str>>();
+	state_tokens[1].trim().to_string()
+}
+
+// TODO: Perhaps we should return an error ... 
+fn extract_thread_info_from_line(line: String) -> ThreadInfo {
+	let mut ti = ThreadInfo::empty();
+	let rg = Regex::new(THREAD_NAME_RGX).unwrap();
+	if rg.is_match(&line) {
+		match rg.captures(&line) {
+			Some(group) => {
+				// TODO: change this magic number with a constant.
+				match group.get(1) {
+					Some(thread_name) => {
+						ti.name = thread_name.as_str().to_string();
+					},
+					None => {}
+				}
+
+				match group.get(2) {
+					Some(thread_priority) => {
+						ti.priority = thread_priority.as_str().to_string();
+					},
+					None => {}
+				}
+
+				match group.get(3) {
+					Some(thread_id) => {
+						ti.id = thread_id.as_str().to_string();
+					},
+					None => {}
+				}
+
+				match group.get(4) {
+					Some(thread_native_id) => {
+						ti.native_id = thread_native_id.as_str().to_string();
+					},
+					None => {}
+				}
+			},
+			None => {
+				println!("None :(");
+			},
+		}
+	}
+	return ti
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const THREAD_INFO: &'static str = r#""Attach Listener" daemon prio=10 tid=0x00002aaab74c5000 nid=0x2ea5 waiting on condition [0x0000000000000000]`
-	threadStateLine = `   java.lang.Thread.State: TIMED_WAITING (parking)`
+    const THREAD_INFO: &'static str = r#""Attach Listener" daemon prio=10 tid=0x00002aaab74c5000 nid=0x2ea5 waiting on condition [0x0000000000000000]"#;
+	const THREAD_STATE_LINE: &'static str = r#"   java.lang.Thread.State: TIMED_WAITING (parking)"#;
 
-	threadInformation = `"HDScanner" prio=10 tid=0x00002aaaebf6e800 nid=0x4367 runnable [0x00000000451cf000]
+	const THREAD_INFORMATION: &'static str = r#""HDScanner" prio=10 tid=0x00002aaaebf6e800 nid=0x4367 runnable [0x00000000451cf000]
    java.lang.Thread.State: RUNNABLE
 	at java.io.UnixFileSystem.getBooleanAttributes0(Native Method)
 	at java.io.UnixFileSystem.getBooleanAttributes(UnixFileSystem.java:228)
@@ -147,4 +215,21 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
         let expected_thread_string_info = "Thread Id: '0x00007f90d0106000', Name: 'Attach Listener', State: 'RUNNABLE'";
         assert_eq!(th.to_string(), expected_thread_string_info);
     }
+
+	#[test]
+	fn test_extract_thread_state() {
+		const EXPECTED_STATE: &'static str = "TIMED_WAITING";
+		let state = extract_thread_state(String::from(THREAD_STATE_LINE));
+		assert_eq!(state, EXPECTED_STATE);
+	}
+
+	#[test]
+	fn test_thread_info() {
+		let th = extract_thread_info_from_line(THREAD_INFO.to_string());
+
+		assert_eq!(th.name, "Attach Listener");
+		assert_eq!(th.id, "0x00002aaab74c5000");
+		assert_eq!(th.native_id, "0x2ea5");
+	}
+
 }

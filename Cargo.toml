@@ -5,3 +5,5 @@ authors = ["leogtzr <leogutierrezramirez@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+regex = "1.1.7"
+stringreader = "0.1.1"
