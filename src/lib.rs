@@ -1,9 +1,12 @@
 extern crate regex;
 use regex::Regex;
 
-const THREAD_INFORMATION_BEGINS: &'static str = r#"\""#;
+use std::io::{BufRead};
+
+const THREAD_INFORMATION_BEGINS: &'static str = r#"""#;
 const THREAD_NAME_RGX: &'static str = r#"^"(.*)".*prio=([0-9]+) tid=(\w*) nid=(\w*)\s\w*"#;
 const STATE_RGX: &'static str = r#"\s+java.lang.Thread.State: (.*)"#;
+const THREAD_STATE: &'static str = "java.lang.Thread.State: ";
 const LOCKED_RGX: &'static str = r#"\s*\- locked\s*<(.*)>\s*\(a\s(.*)\)"#;
 const PARKINGORWAITING_RGX: &'static str = r#"\s*\- (?:waiting on|parking to wait for)\s*<(.*)>\s*\(a\s(.*)\)"#;
 const STACKTRACE_RGX: &'static str = r#"^\s+(at|\-\s).*\)$"#;
@@ -14,7 +17,7 @@ const THREADID_RGX_GROUP_INDEX: i32 = 3;
 const THREADNATIVE_ID_RGX_GROUP_INDEX: i32 = 4;
 
 #[derive(Debug)]
-struct ThreadInfo {
+pub struct ThreadInfo {
 	name: String, 
     id: String, 
     native_id: String, 
@@ -54,15 +57,56 @@ struct Locked {
 }
 
 fn extract_thread_state(line: String) -> String {
-	let rg = Regex::new(STATE_RGX).unwrap();
 	let state_tokens = line.split_whitespace().collect::<Vec<&str>>();
 	state_tokens[1].trim().to_string()
 }
 
+pub fn parse<R: BufRead>(r: &mut R, threads: &mut Vec<ThreadInfo>) {
+	let mut threads: Vec<ThreadInfo> = vec![];
+
+	let mut lines: Vec<_> = r.lines().map(|line| line.unwrap()).collect();
+
+	for mut line_index in 0..lines.len() {
+		let line = lines.get(line_index).unwrap();
+		if line.starts_with(THREAD_INFORMATION_BEGINS) {
+			let mut ti = extract_thread_info_from_line(line.clone());
+			line_index += 1;
+			let line = lines.get(line_index).unwrap();
+			if line.contains(THREAD_STATE) {
+				ti.state = extract_thread_state(line.to_string());
+				line_index += 1;
+				
+				let mut stacktrace = String::new();
+				let mut line = lines.get(line_index).unwrap().trim();
+				
+				if !line.is_empty() {			// Stacktrace ...
+					loop {
+						if !line.is_empty() {
+							stacktrace.push_str(line);
+							stacktrace.push_str("\n");
+							ti.stack_trace = stacktrace.clone();
+						} else {
+							break;
+						}
+
+						line_index += 1;
+						if line_index >= lines.len() {
+							break;
+						}
+						line = lines.get(line_index).unwrap().trim();
+					}
+				}
+
+			}
+			threads.push(ti);
+		}
+	}
+}
+
 // TODO: Perhaps we should return an error ... 
 fn extract_thread_info_from_line(line: String) -> ThreadInfo {
-	let mut ti = ThreadInfo::empty();
 	let rg = Regex::new(THREAD_NAME_RGX).unwrap();
+	let mut ti = ThreadInfo::empty();
 	if rg.is_match(&line) {
 		match rg.captures(&line) {
 			Some(group) => {
@@ -100,7 +144,8 @@ fn extract_thread_info_from_line(line: String) -> ThreadInfo {
 			},
 		}
 	}
-	return ti
+	// println!("Now is: {:?}", ti);
+	ti
 }
 
 #[cfg(test)]
