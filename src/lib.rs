@@ -104,42 +104,30 @@ pub fn parse_from<R: BufRead>(r: &mut R, threads: &mut Vec<ThreadInfo>) {
 }
 
 fn extract_thread_info_from_line(line: String, rg: &mut Regex) -> ThreadInfo {
-	//let rg = Regex::new(THREAD_NAME_RGX).unwrap();
 	let mut ti = ThreadInfo::empty();
 	if rg.is_match(&line) {
+		if line.contains(" daemon ") {
+			ti.daemon = true
+		}
 		match rg.captures(&line) {
 			Some(group) => {
-				match group.get(THREADNAME_RGX_GROUP_INDEX) {
-					Some(thread_name) => {
-						ti.name = thread_name.as_str().to_string();
-					},
-					None => {}
+				if let Some(group_index) = group.get(THREADNAME_RGX_GROUP_INDEX) {
+					ti.name = group_index.as_str().to_string();
 				}
 
-				match group.get(THREADPRIORITY_RGX_GROUP_INDEX) {
-					Some(thread_priority) => {
-						ti.priority = thread_priority.as_str().to_string();
-					},
-					None => {}
+				if let Some(group_index) = group.get(THREADPRIORITY_RGX_GROUP_INDEX) {
+					ti.priority = group_index.as_str().to_string();
 				}
 
-				match group.get(THREADID_RGX_GROUP_INDEX) {
-					Some(thread_id) => {
-						ti.id = thread_id.as_str().to_string();
-					},
-					None => {}
+				if let Some(group_index) = group.get(THREADID_RGX_GROUP_INDEX) {
+					ti.id = group_index.as_str().to_string();
 				}
 
-				match group.get(THREADNATIVE_ID_RGX_GROUP_INDEX) {
-					Some(thread_native_id) => {
-						ti.native_id = thread_native_id.as_str().to_string();
-					},
-					None => {}
+				if let Some(group_index) = group.get(THREADNATIVE_ID_RGX_GROUP_INDEX) {
+					ti.native_id = group_index.as_str().to_string();
 				}
 			},
-			None => {
-				println!("None :(");
-			},
+			None => {},
 		}
 	}
 	ti
@@ -267,8 +255,8 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 
 	#[test]
 	fn test_thread_info() {
-		let th = extract_thread_info_from_line(THREAD_INFO.to_string());
-
+		let mut rg = Regex::new(THREAD_NAME_RGX).unwrap();
+		let th = extract_thread_info_from_line(THREAD_INFO.to_string(), &mut rg);
 		assert_eq!(th.name, "Attach Listener");
 		assert_eq!(th.id, "0x00002aaab74c5000");
 		assert_eq!(th.native_id, "0x2ea5");
