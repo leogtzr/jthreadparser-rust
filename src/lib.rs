@@ -11,10 +11,10 @@ const LOCKED_RGX: &'static str = r#"\s*\- locked\s*<(.*)>\s*\(a\s(.*)\)"#;
 const PARKINGORWAITING_RGX: &'static str = r#"\s*\- (?:waiting on|parking to wait for)\s*<(.*)>\s*\(a\s(.*)\)"#;
 const STACKTRACE_RGX: &'static str = r#"^\s+(at|\-\s).*\)$"#;
 const STACKTRACE_RGX_METHOD_NAME: &'static str = r#"at\s+(.*)$"#;
-const THREADNAME_RGX_GROUP_INDEX: i32 = 1;
-const THREADPRIORITY_RGX_GROUP_INDEX: i32 = 2;
-const THREADID_RGX_GROUP_INDEX: i32 = 3;
-const THREADNATIVE_ID_RGX_GROUP_INDEX: i32 = 4;
+const THREADNAME_RGX_GROUP_INDEX: usize = 1;
+const THREADPRIORITY_RGX_GROUP_INDEX: usize = 2;
+const THREADID_RGX_GROUP_INDEX: usize = 3;
+const THREADNATIVE_ID_RGX_GROUP_INDEX: usize = 4;
 
 #[derive(Debug)]
 pub struct ThreadInfo {
@@ -51,25 +51,25 @@ impl ThreadInfo {
 	}
 }
 
-struct Locked {
-	lock_id: String, 
-    locked_object_name: String,
-}
+// struct Locked {
+// 	lock_id: String, 
+//     locked_object_name: String,
+// }
 
 fn extract_thread_state(line: String) -> String {
 	let state_tokens = line.split_whitespace().collect::<Vec<&str>>();
 	state_tokens[1].trim().to_string()
 }
 
-pub fn parse<R: BufRead>(r: &mut R, threads: &mut Vec<ThreadInfo>) {
-	let mut threads: Vec<ThreadInfo> = vec![];
+pub fn parse_from<R: BufRead>(r: &mut R, threads: &mut Vec<ThreadInfo>) {
+	let lines: Vec<_> = r.lines().map(|line| line.unwrap()).collect();
 
-	let mut lines: Vec<_> = r.lines().map(|line| line.unwrap()).collect();
+	let mut rg = Regex::new(THREAD_NAME_RGX).unwrap();
 
 	for mut line_index in 0..lines.len() {
 		let line = lines.get(line_index).unwrap();
 		if line.starts_with(THREAD_INFORMATION_BEGINS) {
-			let mut ti = extract_thread_info_from_line(line.clone());
+			let mut ti = extract_thread_info_from_line(line.clone(), &mut rg);
 			line_index += 1;
 			let line = lines.get(line_index).unwrap();
 			if line.contains(THREAD_STATE) {
@@ -103,36 +103,34 @@ pub fn parse<R: BufRead>(r: &mut R, threads: &mut Vec<ThreadInfo>) {
 	}
 }
 
-// TODO: Perhaps we should return an error ... 
-fn extract_thread_info_from_line(line: String) -> ThreadInfo {
-	let rg = Regex::new(THREAD_NAME_RGX).unwrap();
+fn extract_thread_info_from_line(line: String, rg: &mut Regex) -> ThreadInfo {
+	//let rg = Regex::new(THREAD_NAME_RGX).unwrap();
 	let mut ti = ThreadInfo::empty();
 	if rg.is_match(&line) {
 		match rg.captures(&line) {
 			Some(group) => {
-				// TODO: change this magic number with a constant.
-				match group.get(1) {
+				match group.get(THREADNAME_RGX_GROUP_INDEX) {
 					Some(thread_name) => {
 						ti.name = thread_name.as_str().to_string();
 					},
 					None => {}
 				}
 
-				match group.get(2) {
+				match group.get(THREADPRIORITY_RGX_GROUP_INDEX) {
 					Some(thread_priority) => {
 						ti.priority = thread_priority.as_str().to_string();
 					},
 					None => {}
 				}
 
-				match group.get(3) {
+				match group.get(THREADID_RGX_GROUP_INDEX) {
 					Some(thread_id) => {
 						ti.id = thread_id.as_str().to_string();
 					},
 					None => {}
 				}
 
-				match group.get(4) {
+				match group.get(THREADNATIVE_ID_RGX_GROUP_INDEX) {
 					Some(thread_native_id) => {
 						ti.native_id = thread_native_id.as_str().to_string();
 					},
@@ -144,7 +142,6 @@ fn extract_thread_info_from_line(line: String) -> ThreadInfo {
 			},
 		}
 	}
-	// println!("Now is: {:?}", ti);
 	ti
 }
 
