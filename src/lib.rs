@@ -8,8 +8,6 @@ use std::collections::HashMap;
 use std::hash::Hasher;
 use std::hash::Hash;
 
-// use std::borrow::Borrow;
-
 const THREAD_INFORMATION_BEGINS: &'static str = r#"""#;
 const THREAD_NAME_RGX: &'static str = r#"^"(.*)".*prio=([0-9]+) tid=(\w*) nid=(\w*)\s\w*"#;
 const STATE_RGX: &'static str = r#"\s+java.lang.Thread.State: (.*)"#;
@@ -199,6 +197,29 @@ pub fn holds(threads: &Vec<ThreadInfo>) -> HashMap<ThreadInfo, Vec<Locked>> {
 	holds
 }
 
+pub fn holds_for_thread(th: &ThreadInfo) -> Vec<Locked> {
+	if !th.stack_trace.contains(" locked ") {
+		return Vec::new();
+	}
+	let mut holds = Vec::new();
+	let re = Regex::new(LOCKED_RGX).unwrap();
+	for stack_line in th.stack_trace.split("\n") {
+		if re.is_match(&stack_line) {
+			match re.captures(&stack_line) {
+				Some(group) => {
+					holds.push(Locked{
+						lock_id: group.get(1).unwrap().as_str().to_string(),
+						locked_object_name: group.get(2).unwrap().as_str().to_string(),
+					});						
+				},
+				None => {},
+			}
+
+		}
+	}
+	holds
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,9 +361,7 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 		];
 		let expected_thread_id_with_locks = String::from("0x00007f8fe400c800");
 
-		let mut streader = StringReader::new(THREAD_INFO_WITHLOCKS);
-    	// let mut br = BufReader::new(streader);
-
+		let streader = StringReader::new(THREAD_INFO_WITHLOCKS);
 		let mut br = BufReader::new(streader);
     	let mut threads: Vec<ThreadInfo> = vec![];
 
@@ -360,7 +379,32 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 
 
 		assert_eq!(holds.len(), expected_number_of_threads);
-		
+	}
+
+	#[test]
+	fn test_holds_for_thread() {
+		let streader = StringReader::new(THREAD_INFO_WITHLOCKS);
+		let mut br = BufReader::new(streader);
+    	let mut threads: Vec<ThreadInfo> = vec![];
+		let expected_number_of_locks_in_thread_with_lock_info = 3;
+
+		let expected_locks = vec![
+				Locked { lock_id: String::from("0x0000000682e5f948"), locked_object_name: String::from("sun.security.provider.Sun") },
+                Locked { lock_id: String::from("0x00000007bc531138"), locked_object_name: String::from("java.lang.Object") },
+                Locked { lock_id: String::from("0x00000007bbbac500"), locked_object_name: String::from("sun.security.ssl.SSLEngineImpl") }
+		];
+
+		parse_from(&mut br, &mut threads);
+
+		for thread in threads {
+			let holds = holds_for_thread(&thread);
+			assert_eq!(holds.len(), expected_number_of_locks_in_thread_with_lock_info);
+
+			for lock_index in 0..expected_locks.len() {
+				assert_eq!(expected_locks[lock_index], holds[lock_index]);
+			}
+		}
+
 	}
 
 }
