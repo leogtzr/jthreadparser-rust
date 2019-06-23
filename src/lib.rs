@@ -2,6 +2,13 @@ extern crate regex;
 use regex::Regex;
 
 use std::io::{BufRead};
+use std::io::BufReader;
+use stringreader::StringReader;
+use std::collections::HashMap;
+use std::hash::Hasher;
+use std::hash::Hash;
+
+// use std::borrow::Borrow;
 
 const THREAD_INFORMATION_BEGINS: &'static str = r#"""#;
 const THREAD_NAME_RGX: &'static str = r#"^"(.*)".*prio=([0-9]+) tid=(\w*) nid=(\w*)\s\w*"#;
@@ -16,7 +23,7 @@ const THREADPRIORITY_RGX_GROUP_INDEX: usize = 2;
 const THREADID_RGX_GROUP_INDEX: usize = 3;
 const THREADNATIVE_ID_RGX_GROUP_INDEX: usize = 4;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ThreadInfo {
 	name: String, 
     id: String, 
@@ -51,10 +58,11 @@ impl ThreadInfo {
 	}
 }
 
-// struct Locked {
-// 	lock_id: String, 
-//     locked_object_name: String,
-// }
+#[derive(Debug)]
+pub struct Locked {
+	lock_id: String, 
+    locked_object_name: String,
+}
 
 fn extract_thread_state(line: String) -> String {
 	let state_tokens = line.split_whitespace().collect::<Vec<&str>>();
@@ -131,6 +139,64 @@ fn extract_thread_info_from_line(line: String, rg: &mut Regex) -> ThreadInfo {
 		}
 	}
 	ti
+}
+
+impl PartialEq for ThreadInfo {
+	fn eq(&self, other: &Self) -> bool {
+        (self.name == other.name) 
+		&& (self.id == other.id) 
+		&& (self.native_id == other.native_id)
+		&& (self.priority == other.priority)
+		&& (self.state == other.state)
+		&& (self.daemon == other.daemon)
+    }
+}
+
+impl Eq for ThreadInfo {}
+
+impl PartialEq for Locked {
+	fn eq(&self, other: &Self) -> bool {
+		(self.lock_id == other.lock_id) && (self.locked_object_name == other.locked_object_name)
+	}
+}
+
+impl Hash for ThreadInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+		self.name.hash(state);
+		self.id.hash(state);
+		self.native_id.hash(state);
+		self.priority.hash(state);
+		self.state.hash(state);
+		self.daemon.hash(state);
+
+    }
+}
+
+pub fn holds(threads: &Vec<ThreadInfo>) -> HashMap<ThreadInfo, Vec<Locked>> {
+	let mut holds = HashMap::new();
+	let re = Regex::new(LOCKED_RGX).unwrap();
+
+	for th in threads {
+		if th.stack_trace.is_empty() {
+			continue;
+		}
+		for stack_line in th.stack_trace.split("\n") {
+			if re.is_match(&stack_line) {
+				match re.captures(&stack_line) {
+					Some(group) => {
+						let x = holds.entry(th.clone()).or_insert(Vec::new());
+						x.push(Locked{
+							lock_id: group.get(1).unwrap().as_str().to_string(),
+							locked_object_name: group.get(2).unwrap().as_str().to_string(),
+						});						
+					},
+					None => {},
+				}
+
+			}
+		}
+	}
+	holds
 }
 
 #[cfg(test)]
@@ -260,6 +326,41 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 		assert_eq!(th.name, "Attach Listener");
 		assert_eq!(th.id, "0x00002aaab74c5000");
 		assert_eq!(th.native_id, "0x2ea5");
+	}
+
+	#[test]
+	fn test_holds() {
+		let expected_number_of_threads = 1;
+		let expected_number_of_locks_in_thread = 3;
+
+		let expected_locks = vec![
+				Locked { lock_id: String::from("0x0000000682e5f948"), locked_object_name: String::from("sun.security.provider.Sun") },
+                Locked { lock_id: String::from("0x00000007bc531138"), locked_object_name: String::from("java.lang.Object") },
+                Locked { lock_id: String::from("0x00000007bbbac500"), locked_object_name: String::from("sun.security.ssl.SSLEngineImpl") }
+		];
+		let expected_thread_id_with_locks = String::from("0x00007f8fe400c800");
+
+		let mut streader = StringReader::new(THREAD_INFO_WITHLOCKS);
+    	// let mut br = BufReader::new(streader);
+
+		let mut br = BufReader::new(streader);
+    	let mut threads: Vec<ThreadInfo> = vec![];
+
+		// threads, err := ParseFrom(strings.NewReader(threadInfoWithLocks))
+		parse_from(&mut br, &mut threads);
+
+		let holds = holds(&threads);
+		for (key, val) in &holds {
+			assert_eq!(expected_thread_id_with_locks, key.id);
+			assert_eq!(expected_locks.len(), val.len());
+			for lock_index in 0..expected_locks.len() {
+				assert_eq!(expected_locks[lock_index], val[lock_index]);
+			}
+		}
+
+
+		assert_eq!(holds.len(), expected_number_of_threads);
+		
 	}
 
 }
