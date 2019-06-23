@@ -221,12 +221,59 @@ pub fn holds_for_thread(th: &ThreadInfo) -> Vec<Locked> {
 	holds
 }
 
+fn unique_stack_trace(thread_stack_trace: Vec<&str>) -> Vec<String> {
+	let mut u: Vec<String> = Vec::new();
+	let mut m: HashMap<String, bool> = HashMap::new(); // make(map[string]bool)
+
+	for line in thread_stack_trace {
+		match m.get(line) {
+			Some(_) => {},
+			None => {
+				m.insert(line.to_owned(), true);
+				u.push(line.to_string());
+			}
+		}
+	}
+	u
+}
+
+fn extract_java_method_name_from_stack_trace_line(stacktrace_line: String, rg: &mut Regex) -> String {
+	let mut method_name = String::from("");
+	if rg.is_match(&stacktrace_line) {
+		let fields = stacktrace_line.split_whitespace().collect::<Vec<&str>>();
+		let fields = &fields[1..];
+		for field in fields {
+			method_name.push_str(field);
+			method_name.push_str(" ");
+		}
+	}
+	method_name.trim().to_string()
+}
+
+pub fn most_used_methods(threads: &Vec<ThreadInfo>) -> HashMap<String, i32> {
+
+	let mut most_used_methods_general = HashMap::new();
+	let mut rg = Regex::new(STACKTRACE_RGX_METHOD_NAME).unwrap();
+	for th in threads {
+		let stacktrace_lines = unique_stack_trace(th.stack_trace.split("\n").collect::<Vec<&str>>());
+
+		for stacktrace_line in stacktrace_lines {
+			if stacktrace_line.is_empty() {
+				continue
+			}
+			let stacktrace_line = extract_java_method_name_from_stack_trace_line(stacktrace_line, &mut rg);
+			let count = most_used_methods_general.entry(stacktrace_line).or_insert(0);
+			*count += 1;
+		}
+	}
+	most_used_methods_general
+}
+
 pub fn identical_stack_trace(threads: &Vec<ThreadInfo>) -> HashMap<String, i32> {
 	let mut indentical_stack_trace = HashMap::new();
 	for th in threads {
-		let thStack = th.stack_trace.trim();
-
-		let count = indentical_stack_trace.entry(thStack.to_string()).or_insert(0);
+		let th_stack = th.stack_trace.trim();
+		let count = indentical_stack_trace.entry(th_stack.to_string()).or_insert(0);
         *count += 1;
 	}
 	indentical_stack_trace
@@ -364,8 +411,6 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 	#[test]
 	fn test_holds() {
 		let expected_number_of_threads = 1;
-		let expected_number_of_locks_in_thread = 3;
-
 		let expected_locks = vec![
 				Locked { lock_id: String::from("0x0000000682e5f948"), locked_object_name: String::from("sun.security.provider.Sun") },
                 Locked { lock_id: String::from("0x00000007bc531138"), locked_object_name: String::from("java.lang.Object") },
@@ -377,7 +422,6 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 		let mut br = BufReader::new(streader);
     	let mut threads: Vec<ThreadInfo> = vec![];
 
-		// threads, err := ParseFrom(strings.NewReader(threadInfoWithLocks))
 		parse_from(&mut br, &mut threads);
 
 		let holds = holds(&threads);
@@ -419,7 +463,7 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 	}
 
 	#[test]
-	fn TestIdenticalStrackTrace() {
+	fn test_identical_strack_trace() {
 		let expected_number_of_threads_with_identical_stack_trace = 20;
 		let stacktrace = r#"at sun.misc.Unsafe.park(Native Method)
 - parking to wait for  <0x0000000750785368> (a java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject)
@@ -439,5 +483,27 @@ at java.lang.Thread.run(Thread.java:682)"#;
 		assert_eq!(identical_stack_trace[stacktrace], expected_number_of_threads_with_identical_stack_trace);
 	}
 
+	#[test]
+	fn test_top_methods_in_threads() {
+		let f = File::open("tdump.sample").unwrap();
+		let mut br = BufReader::new(f);
+    	let mut threads: Vec<ThreadInfo> = vec![];
+		parse_from(&mut br, &mut threads);
+
+		let most_used_methods = most_used_methods(&threads);
+
+		let java_method_name = "java.lang.Object.wait(Native Method)";
+
+		let expected_number_of_threads_with_method_name = 82;
+
+		match most_used_methods.get(java_method_name) {
+			Some(count) => {
+				assert_eq!(*count, expected_number_of_threads_with_method_name);
+			},
+			None => {
+				panic!("key not found in map");
+			}
+		}
+	}
 
 }
