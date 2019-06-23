@@ -3,6 +3,7 @@ use regex::Regex;
 
 use std::io::{BufRead};
 use std::io::BufReader;
+use std::fs::File;
 use stringreader::StringReader;
 use std::collections::HashMap;
 use std::hash::Hasher;
@@ -60,6 +61,37 @@ impl ThreadInfo {
 pub struct Locked {
 	lock_id: String, 
     locked_object_name: String,
+}
+
+impl PartialEq for ThreadInfo {
+	fn eq(&self, other: &Self) -> bool {
+        (self.name == other.name) 
+		&& (self.id == other.id) 
+		&& (self.native_id == other.native_id)
+		&& (self.priority == other.priority)
+		&& (self.state == other.state)
+		&& (self.daemon == other.daemon)
+    }
+}
+
+impl Eq for ThreadInfo {}
+
+impl PartialEq for Locked {
+	fn eq(&self, other: &Self) -> bool {
+		(self.lock_id == other.lock_id) && (self.locked_object_name == other.locked_object_name)
+	}
+}
+
+impl Hash for ThreadInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+		self.name.hash(state);
+		self.id.hash(state);
+		self.native_id.hash(state);
+		self.priority.hash(state);
+		self.state.hash(state);
+		self.daemon.hash(state);
+
+    }
 }
 
 fn extract_thread_state(line: String) -> String {
@@ -139,37 +171,6 @@ fn extract_thread_info_from_line(line: String, rg: &mut Regex) -> ThreadInfo {
 	ti
 }
 
-impl PartialEq for ThreadInfo {
-	fn eq(&self, other: &Self) -> bool {
-        (self.name == other.name) 
-		&& (self.id == other.id) 
-		&& (self.native_id == other.native_id)
-		&& (self.priority == other.priority)
-		&& (self.state == other.state)
-		&& (self.daemon == other.daemon)
-    }
-}
-
-impl Eq for ThreadInfo {}
-
-impl PartialEq for Locked {
-	fn eq(&self, other: &Self) -> bool {
-		(self.lock_id == other.lock_id) && (self.locked_object_name == other.locked_object_name)
-	}
-}
-
-impl Hash for ThreadInfo {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-		self.name.hash(state);
-		self.id.hash(state);
-		self.native_id.hash(state);
-		self.priority.hash(state);
-		self.state.hash(state);
-		self.daemon.hash(state);
-
-    }
-}
-
 pub fn holds(threads: &Vec<ThreadInfo>) -> HashMap<ThreadInfo, Vec<Locked>> {
 	let mut holds = HashMap::new();
 	let re = Regex::new(LOCKED_RGX).unwrap();
@@ -218,6 +219,17 @@ pub fn holds_for_thread(th: &ThreadInfo) -> Vec<Locked> {
 		}
 	}
 	holds
+}
+
+pub fn identical_stack_trace(threads: &Vec<ThreadInfo>) -> HashMap<String, i32> {
+	let mut indentical_stack_trace = HashMap::new();
+	for th in threads {
+		let thStack = th.stack_trace.trim();
+
+		let count = indentical_stack_trace.entry(thStack.to_string()).or_insert(0);
+        *count += 1;
+	}
+	indentical_stack_trace
 }
 
 #[cfg(test)]
@@ -404,7 +416,28 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 				assert_eq!(expected_locks[lock_index], holds[lock_index]);
 			}
 		}
-
 	}
+
+	#[test]
+	fn TestIdenticalStrackTrace() {
+		let expected_number_of_threads_with_identical_stack_trace = 20;
+		let stacktrace = r#"at sun.misc.Unsafe.park(Native Method)
+- parking to wait for  <0x0000000750785368> (a java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject)
+at java.util.concurrent.locks.LockSupport.park(LockSupport.java:156)
+at java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:1987)
+at java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:399)
+at java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:957)
+at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:917)
+at java.lang.Thread.run(Thread.java:682)"#;
+
+		let f = File::open("tdump.sample").unwrap();
+		let mut br = BufReader::new(f);
+    	let mut threads: Vec<ThreadInfo> = vec![];
+		parse_from(&mut br, &mut threads);
+
+		let identical_stack_trace = identical_stack_trace(&threads);
+		assert_eq!(identical_stack_trace[stacktrace], expected_number_of_threads_with_identical_stack_trace);
+	}
+
 
 }
