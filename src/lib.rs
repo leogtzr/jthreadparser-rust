@@ -2,9 +2,6 @@ extern crate regex;
 use regex::Regex;
 
 use std::io::{BufRead};
-use std::io::BufReader;
-use std::fs::File;
-use stringreader::StringReader;
 use std::collections::HashMap;
 use std::hash::Hasher;
 use std::hash::Hash;
@@ -223,7 +220,7 @@ pub fn holds_for_thread(th: &ThreadInfo) -> Vec<Locked> {
 
 fn unique_stack_trace(thread_stack_trace: Vec<&str>) -> Vec<String> {
 	let mut u: Vec<String> = Vec::new();
-	let mut m: HashMap<String, bool> = HashMap::new(); // make(map[string]bool)
+	let mut m: HashMap<String, bool> = HashMap::new();
 
 	for line in thread_stack_trace {
 		match m.get(line) {
@@ -282,6 +279,9 @@ pub fn identical_stack_trace(threads: &Vec<ThreadInfo>) -> HashMap<String, i32> 
 #[cfg(test)]
 mod tests {
     use super::*;
+	use std::io::BufReader;
+	use std::fs::File;
+	use stringreader::StringReader;
 
     const THREAD_INFO: &'static str = r#""Attach Listener" daemon prio=10 tid=0x00002aaab74c5000 nid=0x2ea5 waiting on condition [0x0000000000000000]"#;
 	const THREAD_STATE_LINE: &'static str = r#"   java.lang.Thread.State: TIMED_WAITING (parking)"#;
