@@ -72,6 +72,7 @@ impl PartialEq for ThreadInfo {
 }
 
 impl Eq for ThreadInfo {}
+impl Eq for Locked {}
 
 impl PartialEq for Locked {
 	fn eq(&self, other: &Self) -> bool {
@@ -87,8 +88,14 @@ impl Hash for ThreadInfo {
 		self.priority.hash(state);
 		self.state.hash(state);
 		self.daemon.hash(state);
-
     }
+}
+
+impl Hash for Locked {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.lock_id.hash(state);
+		self.locked_object_name.hash(state);
+	}
 }
 
 fn extract_thread_state(line: String) -> String {
@@ -184,7 +191,7 @@ pub fn holds(threads: &Vec<ThreadInfo>) -> HashMap<ThreadInfo, Vec<Locked>> {
 						x.push(Locked{
 							lock_id: group.get(1).unwrap().as_str().to_string(),
 							locked_object_name: group.get(2).unwrap().as_str().to_string(),
-						});						
+						});
 					},
 					None => {},
 				}
@@ -274,6 +281,60 @@ pub fn identical_stack_trace(threads: &Vec<ThreadInfo>) -> HashMap<String, i32> 
         *count += 1;
 	}
 	indentical_stack_trace
+}
+
+fn extract_thread_waiting(
+	threads_waiting: &mut HashMap<Locked, Vec<ThreadInfo>>,
+	rgxp: &mut Regex,
+	stack_line: String,
+	th: &ThreadInfo) {
+
+	match rgxp.captures(&stack_line) {
+		Some(group) => {
+			let lock = Locked{
+				lock_id: String::from(group.get(1).unwrap().as_str())
+				, locked_object_name: String::from(group.get(2).unwrap().as_str())
+			};
+			let x = threads_waiting.entry(lock).or_insert(Vec::new());
+			x.push((*th).clone());
+			// println!(":) {:?}", x);
+			// threads_waiting.insert(lock, x.to_vec());
+		},
+		None => {},
+	}
+}
+
+
+pub fn awaiting_notification(threads: &Vec<ThreadInfo>) -> HashMap<Locked, Vec<ThreadInfo>> {
+	let mut threads_waiting: HashMap<Locked, Vec<ThreadInfo>> = HashMap::new();
+
+	for th in threads {
+		if th.stack_trace.is_empty() {
+			continue;
+		}
+		if !th.stack_trace.contains("waiting on") && !th.stack_trace.contains("parking to wait for") {
+			// println!("Pues bye {} {} - {}", th.id, th.stack_trace.contains("waiting on"), th.stack_trace.contains("parking to wait for"));
+			continue;
+		}
+		// println!("A ver ...: {:?}", th);
+		let mut rg = Regex::new(PARKINGORWAITING_RGX).unwrap();
+		for stack_line in th.stack_trace.split("\n") {
+			if rg.is_match(stack_line) {
+				extract_thread_waiting(&mut threads_waiting, &mut rg, stack_line.to_string(), &th)
+			}
+		}
+		// if rg.is_match(text: &str)
+		// const PARKINGORWAITING_RGX: &'static str = r#"\s*\- (?:waiting on|parking to wait for)\s*<(.*)>\s*\(a\s(.*)\)"#;
+		// PARKINGORWAITING_RGX
+		// for _, stackLine := range strings.Split(th.StackTrace, "\n") {
+		// 	if rgxp, _ := regexp.Compile(parkingOrWaitingRgx); rgxp.MatchString(stackLine) {
+		// 		threads_waiting = extract_thread_waiting(threadsWaiting, rgxp, stackLine, &th)
+		// 	}
+		// }
+
+	}
+	threads_waiting
+	
 }
 
 #[cfg(test)]
@@ -441,7 +502,7 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
 	fn test_holds_for_thread() {
 		let streader = StringReader::new(THREAD_INFO_WITHLOCKS);
 		let mut br = BufReader::new(streader);
-    	let mut threads: Vec<ThreadInfo> = vec![];
+		let mut threads: Vec<ThreadInfo> = vec![];
 		let expected_number_of_locks_in_thread_with_lock_info = 3;
 
 		let expected_locks = vec![
@@ -502,6 +563,32 @@ at java.lang.Thread.run(Thread.java:682)"#;
 			},
 			None => {
 				panic!("key not found in map");
+			}
+		}
+	}
+
+	#[test]
+	fn test_awaiting_notification() {
+		let f = File::open("awaiting_sample.txt").unwrap();
+		let mut br = BufReader::new(f);
+    	let mut threads: Vec<ThreadInfo> = vec![];
+		parse_from(&mut br, &mut threads);
+		let awaiting = awaiting_notification(&threads);
+
+		let expected_locked_obj_in_file = Locked { 
+			lock_id: String::from("0x0000000740c99708")
+			, locked_object_name: String::from("java.util.concurrent.SynchronousQueue$TransferStack")
+		};
+
+		let expected_threads_ids_having_lock = vec!["0x00002aaac69b1800", "0x00002aaad5029000"];
+
+		let expected_number_of_threads_having_lock = 2;
+
+		for (lock, threads) in awaiting {
+			assert_eq!(lock, expected_locked_obj_in_file);
+			assert_eq!(expected_number_of_threads_having_lock, threads.len());
+			for i in 0..threads.len() {
+				assert_eq!(expected_threads_ids_having_lock[i], threads[i].id);
 			}
 		}
 	}

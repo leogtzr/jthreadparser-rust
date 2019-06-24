@@ -1,0 +1,48 @@
+2017-06-02 19:02:52
+Full thread dump Java HotSpot(TM) 64-Bit Server VM (20.141-b32 mixed mode):
+
+"Attach Listener" daemon prio=10 tid=0x00002aaab74c5000 nid=0x2ea5 waiting on condition [0x0000000000000000]
+   java.lang.Thread.State: RUNNABLE
+
+   Locked ownable synchronizers:
+	- None
+
+"RMI TCP Connection(idle)" daemon prio=10 tid=0x00002aaac69b1800 nid=0x2dec waiting on condition [0x0000000051388000]
+   java.lang.Thread.State: TIMED_WAITING (parking)
+	at sun.misc.Unsafe.park(Native Method)
+	- parking to wait for  <0x0000000740c99708> (a java.util.concurrent.SynchronousQueue$TransferStack)
+	at java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:196)
+	at java.util.concurrent.SynchronousQueue$TransferStack.awaitFulfill(SynchronousQueue.java:424)
+	at java.util.concurrent.SynchronousQueue$TransferStack.transfer(SynchronousQueue.java:323)
+	at java.util.concurrent.SynchronousQueue.poll(SynchronousQueue.java:874)
+	at java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:955)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:917)
+	at java.lang.Thread.run(Thread.java:682)
+
+   Locked ownable synchronizers:
+	- None
+
+"RMI TCP Connection(idle)" daemon prio=10 tid=0x00002aaad5029000 nid=0x2bf8 waiting on condition [0x0000000051287000]
+   java.lang.Thread.State: TIMED_WAITING (parking)
+	at sun.misc.Unsafe.park(Native Method)
+	- parking to wait for  <0x0000000740c99708> (a java.util.concurrent.SynchronousQueue$TransferStack)
+	at java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:196)
+	at java.util.concurrent.SynchronousQueue$TransferStack.awaitFulfill(SynchronousQueue.java:424)
+	at java.util.concurrent.SynchronousQueue$TransferStack.transfer(SynchronousQueue.java:323)
+	at java.util.concurrent.SynchronousQueue.poll(SynchronousQueue.java:874)
+	at java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:955)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:917)
+	at java.lang.Thread.run(Thread.java:682)
+
+   Locked ownable synchronizers:
+	- None
+
+"Thread-283" daemon prio=10 tid=0x00002aaac44c3000 nid=0x5572 waiting on condition [0x0000000051a8f000]
+   java.lang.Thread.State: TIMED_WAITING (sleeping)
+	at java.lang.Thread.sleep(Native Method)
+	at com.endeca.infront.publish.AbstractNioTcpClient.run(AbstractNioTcpClient.java:251)
+	at com.endeca.infront.publish.WorkbenchContentClient.run(WorkbenchContentClient.java:28)
+	at java.lang.Thread.run(Thread.java:682)
+
+   Locked ownable synchronizers:
+	- None
