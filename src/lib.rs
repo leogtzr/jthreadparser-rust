@@ -313,25 +313,14 @@ pub fn awaiting_notification(threads: &Vec<ThreadInfo>) -> HashMap<Locked, Vec<T
 			continue;
 		}
 		if !th.stack_trace.contains("waiting on") && !th.stack_trace.contains("parking to wait for") {
-			// println!("Pues bye {} {} - {}", th.id, th.stack_trace.contains("waiting on"), th.stack_trace.contains("parking to wait for"));
 			continue;
 		}
-		// println!("A ver ...: {:?}", th);
 		let mut rg = Regex::new(PARKINGORWAITING_RGX).unwrap();
 		for stack_line in th.stack_trace.split("\n") {
 			if rg.is_match(stack_line) {
 				extract_thread_waiting(&mut threads_waiting, &mut rg, stack_line.to_string(), &th)
 			}
 		}
-		// if rg.is_match(text: &str)
-		// const PARKINGORWAITING_RGX: &'static str = r#"\s*\- (?:waiting on|parking to wait for)\s*<(.*)>\s*\(a\s(.*)\)"#;
-		// PARKINGORWAITING_RGX
-		// for _, stackLine := range strings.Split(th.StackTrace, "\n") {
-		// 	if rgxp, _ := regexp.Compile(parkingOrWaitingRgx); rgxp.MatchString(stackLine) {
-		// 		threads_waiting = extract_thread_waiting(threadsWaiting, rgxp, stackLine, &th)
-		// 	}
-		// }
-
 	}
 	threads_waiting
 	
